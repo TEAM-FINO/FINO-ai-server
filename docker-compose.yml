@@ -1,0 +1,30 @@
+version: '3.8'
+services:
+  fino-ai-server:
+    build: .
+    container_name: fino-ai-server-standalone
+    ports:
+      - "8001:8001"
+    environment:
+      - VLLM_BASE_URL=http://vllm-server:8000/v1
+    depends_on:
+      - vllm-server
+    restart: unless-stopped
+
+  vllm-server:
+    image: vllm/vllm-openai:latest
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./models:/root/.cache/huggingface/hub
+    ports:
+      - "8002:8000"
+    command: >
+      --model TechxGenus/Meta-Llama-3-8B-Instruct-GPTQ
+      --quantization gptq_marlin
+      --trust-remote-code
