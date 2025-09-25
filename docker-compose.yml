@@ -1,14 +1,67 @@
-version: '3.8'
 services:
+  model-downloader:
+    build:
+      context: .
+    container_name: model-downloader
+    user: root # 'root' 사용자로 강제 실행
+    command: >
+      sh -c "python /app/scripts/download_model.py && chown -R appuser:appuser /app/cache"
+    environment:
+      - TRANSFORMERS_CACHE=/app/cache
+    volumes:
+      - huggingface_cache:/app/cache
+
   fino-ai-server:
-    build: .
-    container_name: fino-ai-server-standalone
+    build:
+      context: .
+    container_name: fino-ai-server
     ports:
       - "8001:8001"
+    env_file:
+      - .env
     environment:
-      - VLLM_BASE_URL=http://vllm-server:8000/v1
+      - TRANSFORMERS_CACHE=/app/cache
+    volumes:
+      - huggingface_cache:/app/cache
     depends_on:
-      - vllm-server
+      model-downloader:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_started
+      vllm-server:
+        condition: service_started
+      chromadb:
+        condition: service_started
+      neo4j:
+        condition: service_started
+    restart: unless-stopped
+
+  celery-worker:
+    build:
+      context: .
+    container_name: celery-worker
+    command: celery -A app.celery_worker.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - TRANSFORMERS_CACHE=/app/cache
+    volumes:
+      - huggingface_cache:/app/cache
+    depends_on:
+      model-downloader:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_started
+      vllm-server:
+        condition: service_started
+      chromadb:
+        condition: service_started
+      neo4j:
+        condition: service_started
     restart: unless-stopped
 
   vllm-server:
@@ -28,3 +81,48 @@ services:
       --model TechxGenus/Meta-Llama-3-8B-Instruct-GPTQ
       --quantization gptq_marlin
       --trust-remote-code
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+
+  neo4j:
+    image: neo4j:5-enterprise
+    ports:
+      - "7687:7687"
+      - "7474:7474"
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD}
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+    volumes:
+      - neo4j_data:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports: ["5672:5672", "15672:15672"] # 15672는 관리자 UI 포트
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports: ["6379:6379"]
+
+  flower:
+    image: mher/flower
+    container_name: flower
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - FLOWER_BROKER_API=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    depends_on:
+      - rabbitmq
+      - redis
+      - celery-worker
+
+volumes:
+  neo4j_data:
+  huggingface_cache:
