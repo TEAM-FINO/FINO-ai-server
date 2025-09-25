@@ -1,4 +1,33 @@
+# FastAPI 웹 프레임워크
 fastapi
 uvicorn[standard]
-openai
+
+# 환경변수 관리
 python-dotenv
+
+# 데이터베이스 클라이언트
+chromadb-client
+neo4j
+
+# AI/ML 라이브러리
+sentence-transformers
+langchain
+langchain-openai
+langchain-community
+
+# 외부 API 연동
+google-api-python-client
+
+# 비동기 작업 처리
+celery
+redis
+# Celery가 RabbitMQ와 통신하기 위한 추가 라이브러리
+pika
+
+# seed_data.py 실행을 위해
+requests
+
+# 테스트
+numpy
+pytest
+pytest-mock
