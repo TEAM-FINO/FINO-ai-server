@@ -1,8 +1,15 @@
+import logging  
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.api.v1 import reports, mock_data
 from app.services.graph_service import graph_service
 from app.core.config import settings
+
+# 다른 파일에서 logging.getLogger(__name__)으로 로거를 가져와 사용할 수 있습니다.
+logging.basicConfig(
+    level=settings.LOG_LEVEL,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
