@@ -14,9 +14,9 @@ router = APIRouter()
              summary="비동기 리포트 생성 요청",
              description="사용자의 쿼리를 받아 리포트 생성을 Celery Worker에게 요청하고 즉시 작업 ID를 반환합니다.")
 def request_report_generation(request: ReportQuery):
-    task = generate_report_task.delay(request.dict())
+    task = generate_report_task.delay(request.model_dump(exclude_unset=False)) # (exclude_unset=False)를 사용하여 None 값도 명시적으로 포함
     return ReportGenerationResponse(task_id=task.id, message="Report generation has been started.")
-# ...
+
 
 @router.get("/status/{task_id}",
             response_model=ReportStatusResponse,

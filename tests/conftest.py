@@ -6,14 +6,11 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "integration: mark test as integration test")
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_celery_for_testing(request):
+def setup_celery_for_testing():
     """
-    'integration' 마커가 없는 테스트에만 Celery 동기 모드를 적용합니다.
+    단위 테스트를 위해 Celery를 동기 모드로 설정합니다.
+    통합 테스트(integration 마커)가 있는 파일은 별도로 설정을 덮어씁니다.
     """
-    if "integration" in request.keywords:
-        # 통합 테스트에서는 아무 설정도 하지 않음 (실제 비동기 모드 사용)
-        yield
-    else:
-        # 단위 테스트에서는 동기 모드(eager) 사용
-        celery_app.conf.update(task_always_eager=True, task_store_eager_result=True)
-        yield
+    # 기본적으로 모든 테스트에 동기 모드 적용
+    celery_app.conf.update(task_always_eager=True, task_store_eager_result=True)
+    yield
