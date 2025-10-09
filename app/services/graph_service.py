@@ -1,6 +1,11 @@
 from app.core.config import settings
 from neo4j import GraphDatabase, Driver
-from typing import List, Optional
+from typing import List, Optional, TypedDict
+
+class NewsInfo(TypedDict):
+    news_id: str
+    title: str
+    category: str
 
 class Neo4jService:
     _driver: Driver = None
@@ -46,6 +51,17 @@ class Neo4jService:
             final_query = base_query + " RETURN n.news_id as news_id LIMIT 100"
             result = session.run(final_query, params)
             return [record['news_id'] for record in result]
+
+    def get_all_news_by_location(self, location: str) -> List[NewsInfo]:
+        """특정 지역의 모든 뉴스 ID, 제목, 카테고리를 가져옵니다."""
+        with self.get_session() as session:
+            query = """
+                MATCH (l:Location {name: $location})<-[:IS_IN_LOCATION]-(n:News)-[:HAS_CATEGORY]->(c:Category)
+                RETURN n.news_id AS news_id, n.title AS title, c.name AS category
+            """
+            result = session.run(query, location=location)
+            # TypedDict 형태로 변환하여 반환
+            return [{"news_id": record["news_id"], "title": record["title"], "category": record["category"]} for record in result]
 
     def create_news_graph_data(self, doc):
         with self.get_session() as session:
