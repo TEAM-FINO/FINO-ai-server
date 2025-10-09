@@ -64,6 +64,24 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  celery-beat:
+    build:
+      context: .
+    container_name: celery-beat
+    command: celery -A app.celery_worker.celery_app beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - TRANSFORMERS_CACHE=/app/cache
+    volumes:
+      - huggingface_cache:/app/cache
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
   vllm-server:
     image: vllm/vllm-openai:latest
     deploy:
@@ -122,6 +140,14 @@ services:
       - rabbitmq
       - redis
       - celery-worker
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: redisinsight
+    ports:
+      - "5540:5540" 
+    depends_on:
+      - redis
 
 volumes:
   neo4j_data:

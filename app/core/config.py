@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str
     CELERY_RESULT_BACKEND: str
     
+    FINO_SERVER_URL: str
+    
     ENV_MODE: str
     LOG_LEVEL: str
     
