@@ -1,14 +1,27 @@
+# ====== Core Application ======
 # FastAPI 웹 프레임워크
 fastapi
 uvicorn[standard]
+pydantic-settings
 
 # 환경변수 관리
 python-dotenv
 
+# ====== Logging ======
+# 프로덕션 환경을 위한 구조화된 JSON 로깅 지원
+python-json-logger==2.0.7
+
+# ====== Databases & Services ======
 # 데이터베이스 클라이언트
 chromadb-client
 neo4j
 
+# 비동기 작업 처리
+celery
+redis
+pika # Celery와 RabbitMQ 브로커 통신용
+
+# ====== AI & LangChain ======
 # AI/ML 라이브러리
 sentence-transformers
 langchain
@@ -18,16 +31,11 @@ langchain-community
 # 외부 API 연동
 google-api-python-client
 
-# 비동기 작업 처리
-celery
-redis
-# Celery가 RabbitMQ와 통신하기 위한 추가 라이브러리
-pika
+# ====== Development & Testing ======
+# 개발 및 테스트용 유틸리티
+requests  # seed_data.py 스크립트 실행용
 
-# seed_data.py 실행을 위해
-requests
-
-# 테스트
+# 테스트 프레임워크
 numpy
 pytest
 pytest-mock
