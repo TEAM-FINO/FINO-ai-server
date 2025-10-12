@@ -1,10 +1,15 @@
 from googleapiclient.discovery import build, Resource
 from googleapiclient.errors import HttpError
 from app.core.config import settings
+import redis 
+import json
+
+# Redis 클라이언트 초기화
+# settings.CELERY_RESULT_BACKEND에서 Redis 주소를 가져와 재사용할 수 있습니다.
+redis_client = redis.from_url(settings.CELERY_RESULT_BACKEND)
+CACHE_EXPIRATION_SECONDS = 3600 # 캐시 유효 시간: 1시간
 
 class GoogleApiService:
-    _cache = {} # 인메모리 캐시
-
     def __init__(self):
         self.service: Resource = None
         # ENABLE_GOOGLE_API=true 일때만 서비스 초기화
@@ -20,10 +25,12 @@ class GoogleApiService:
         if not settings.ENABLE_GOOGLE_API or self.service is None:
             return 0 
 
-        # 캐시 확인
-        if keyword in self._cache:
-            print(f"Cache hit for '{keyword}'. Returning cached score.")
-            return self._cache[keyword]
+        # Redis 캐시 확인
+        cache_key = f"google_trend:{keyword}"
+        cached_result = redis_client.get(cache_key)
+        if cached_result:
+            print(f"Redis cache hit for '{keyword}'.")
+            return json.loads(cached_result)
             
         try:
             query = f'"{keyword}"'
@@ -36,9 +43,10 @@ class GoogleApiService:
             trend_score = int(result.get('searchInformation', {}).get('totalResults', 0))
             print(f"Google Search Trend for '{keyword}': {trend_score} results.")
             
-            self._cache[keyword] = trend_score
+            # Redis에 결과 저장
+            redis_client.set(cache_key, json.dumps(trend_score), ex=CACHE_EXPIRATION_SECONDS)
+
             return trend_score
-            
         except HttpError as e:
             if e.resp.status == 429:
                 print(f"Google API Quota Exceeded for keyword '{keyword}'!")
