@@ -1,17 +1,19 @@
 import sys
+import pathlib
 from pydantic_settings import BaseSettings
-from pydantic import field_validator, ValidationError
+from pydantic import field_validator, model_validator, ValidationError, ConfigDict
+from typing import Optional
 
 class Settings(BaseSettings):
     NEO4J_URI: str
     NEO4J_USERNAME: str
-    NEO4J_PASSWORD: str
+    NEO4J_PASSWORD: Optional[str] = None 
     
     CHROMA_HOST: str
     
     VLLM_BASE_URL: str
     
-    GOOGLE_API_KEY: str
+    GOOGLE_API_KEY: Optional[str] = None
     GOOGLE_CSE_ID: str
     ENABLE_GOOGLE_API: bool
     
@@ -28,6 +30,32 @@ class Settings(BaseSettings):
     VLLM_MODEL_NAME: str = "TechxGenus/Meta-Llama-3-8B-Instruct-GPTQ"
     EMBEDDING_MODEL_NAME: str = 'distiluse-base-multilingual-cased-v1'
     CHROMA_COLLECTION_NAME: str = "fino_news_documents"
+
+    NEO4J_PASSWORD_FILE: Optional[str] = None
+    GOOGLE_API_KEY_FILE: Optional[str] = None
+
+    @model_validator(mode='after')
+    def load_secrets_from_files(self) -> 'Settings':
+        if self.NEO4J_PASSWORD_FILE:
+            try:
+                secret_path = pathlib.Path(self.NEO4J_PASSWORD_FILE)
+                self.NEO4J_PASSWORD = secret_path.read_text().strip()
+            except Exception as e:
+                raise ValueError(f"Could not read secret from NEO4J_PASSWORD_FILE: {e}")
+        
+        if self.GOOGLE_API_KEY_FILE:
+            try:
+                secret_path = pathlib.Path(self.GOOGLE_API_KEY_FILE)
+                self.GOOGLE_API_KEY = secret_path.read_text().strip()
+            except Exception as e:
+                raise ValueError(f"Could not read secret from GOOGLE_API_KEY_FILE: {e}")
+                
+        if not self.NEO4J_PASSWORD:
+            raise ValueError("NEO4J_PASSWORD or NEO4J_PASSWORD_FILE must be set")
+        if not self.GOOGLE_API_KEY:
+            raise ValueError("GOOGLE_API_KEY or GOOGLE_API_KEY_FILE must be set")
+            
+        return self
 
     @field_validator('NEO4J_URI')
     @classmethod
@@ -80,9 +108,10 @@ class Settings(BaseSettings):
                 raise ValueError(f'ENABLE_FILE_LOGGING must be true/false, got: {v}')
         return v
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=False
+    )
 
 try:
     settings = Settings()

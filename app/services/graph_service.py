@@ -29,8 +29,9 @@ class Neo4jService:
                     settings.NEO4J_URI,
                     auth=(settings.NEO4J_USERNAME, settings.NEO4J_PASSWORD),
                     # 연결 풀 설정
-                    max_connection_pool_size=50,
-                    connection_acquisition_timeout=60.0
+                    max_connection_pool_size=20,
+                    connection_acquisition_timeout=30.0,
+                    max_transaction_retry_time=15.0 
                 )
                 # 연결 테스트
                 self._driver.verify_connectivity()
