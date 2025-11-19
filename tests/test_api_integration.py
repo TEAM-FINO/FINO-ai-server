@@ -20,10 +20,14 @@ def client():
         yield test_client
     print("\n--- [Fixture] TestClient closed ---")
 
+
 def test_health_check(client: TestClient):
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "env_mode" in data 
     
 # 워크플로우 호출 검증 테스트 
 def test_manual_report_workflow_dispatch(client: TestClient, mocker):

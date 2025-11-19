@@ -1,10 +1,12 @@
 from fastapi import APIRouter, status, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
 from celery.result import AsyncResult
 from celery.states import PENDING, SUCCESS, FAILURE, REVOKED, STARTED
 from datetime import datetime, time
 from app.celery_worker import celery_app, generate_report_workflow
 from app.schemas.report_schemas import ManualReportRequest, ReportGenerationResponse, ReportStatusResponse 
-from app.services.vectorstore_service import collection
+from app.services.vectorstore_service import collection, embedding_model
 from app.services.health_service import check_all_services
 
 router = APIRouter()
@@ -35,6 +37,7 @@ def request_manual_report_generation(request: ManualReportRequest):
                 detail="end_date cannot be in the future"
             )
         
+        # 워크플로우 Task 시작
         task = generate_report_workflow.delay(
             location=request.location,
             start_date_iso=start_datetime.isoformat(),
@@ -42,22 +45,30 @@ def request_manual_report_generation(request: ManualReportRequest):
             report_type=request.report_type
         )
         
-        # 워크플로우 Task의 결과를 즉시 확인 (WORKFLOW_STARTED 반환)
-        # eager 모드가 아니면 None일 수 있음
-        workflow_result = None
-        if task.ready():
-            workflow_result = task.get()
-        
+        # 기본 응답 데이터
         response_data = {
             "task_id": task.id,
-            "message": "Report generation workflow has been started."
+            "message": "Report generation workflow has been started.",
+            "status": "WORKFLOW_DISPATCHED"  # 기본 상태
         }
         
-        # 워크플로우가 시작한 하위 chain ID도 반환
-        if workflow_result and isinstance(workflow_result, dict):
-            if "workflow_task_id" in workflow_result:
-                response_data["workflow_task_id"] = workflow_result["workflow_task_id"]
-            response_data["status"] = workflow_result.get("status", "WORKFLOW_STARTED")
+        # Eager 모드(동기 실행)인 경우에만 즉시 결과 확인 가능
+        if celery_app.conf.task_always_eager:
+            try:
+                workflow_result = task.get(timeout=1)  # 1초 타임아웃
+                if workflow_result and isinstance(workflow_result, dict):
+                    response_data["workflow_task_id"] = workflow_result.get("workflow_task_id")
+                    response_data["status"] = workflow_result.get("status", "WORKFLOW_STARTED")
+            except Exception as e:
+                # Eager 모드에서도 에러가 발생할 수 있음
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Workflow execution failed: {str(e)}"
+                )
+        else:
+            # 비동기 모드: Task ID만 반환 (결과는 나중에 /status 엔드포인트로 확인)
+            # workflow_task_id는 워크플로우 내부에서 생성되므로 지금은 알 수 없음
+            response_data["status"] = "WORKFLOW_DISPATCHED"
         
         return ReportGenerationResponse(**response_data)
     
@@ -99,6 +110,48 @@ def get_report_status(task_id: str):
         elif task_state == SUCCESS:
             # 성공적으로 완료
             result_data = task_result.get()
+            
+            if isinstance(result_data, dict):
+                workflow_status = result_data.get("status")
+                
+                # WORKFLOW_STARTED 상태인 경우, 하위 chain의 진행 상황 확인
+                if workflow_status == "WORKFLOW_STARTED":
+                    workflow_task_id = result_data.get("workflow_task_id")
+                    if workflow_task_id:
+                        # 하위 워크플로우 상태 확인
+                        workflow_task = AsyncResult(workflow_task_id, app=celery_app)
+                        workflow_state = workflow_task.state
+                        
+                        if workflow_state == SUCCESS:
+                            # 하위 워크플로우도 완료됨
+                            workflow_result = workflow_task.get()
+                            return ReportStatusResponse(
+                                status="COMPLETED",
+                                result=workflow_result,
+                                message="Full workflow completed successfully."
+                            )
+                        elif workflow_state == FAILURE:
+                            return ReportStatusResponse(
+                                status="FAILED",
+                                result={"error": str(workflow_task.info)},
+                                message="Workflow failed."
+                            )
+                        elif workflow_state in [STARTED, PENDING]:
+                            return ReportStatusResponse(
+                                status="PROCESSING",
+                                result=result_data,
+                                message="Workflow is still in progress."
+                            )
+                
+                # SKIPPED 또는 FAILED 상태
+                elif workflow_status in ["SKIPPED", "FAILED"]:
+                    return ReportStatusResponse(
+                        status=workflow_status,
+                        result=result_data,
+                        message=result_data.get("reason", "Workflow did not complete.")
+                    )
+            
+            # 일반적인 성공 케이스
             return ReportStatusResponse(
                 status="COMPLETED",
                 result=result_data,
@@ -139,11 +192,7 @@ def get_report_status(task_id: str):
 
 # ChromaDB 내부 데이터 확인용 API 
 @router.get("/news/inspect_chroma", tags=["Admin Tools"])
-def inspect_chromadb_collection(
-    limit: int = 100,
-    offset: int = 0,
-    include_documents: bool = False
-):
+def inspect_chromadb_collection(limit: int = 100,offset: int = 0,include_documents: bool = False):
     """
     (관리자/개발자용) ChromaDB 컬렉션의 데이터를 조회합니다.
     
@@ -214,6 +263,179 @@ def inspect_chromadb_collection(
             detail=f"Failed to inspect ChromaDB: {str(e)}"
         )
         
+# Pydantic 모델 추가 (타입 안정성)
+class ChromaDocument(BaseModel):
+    """ChromaDB 단일 문서 응답 모델"""
+    id: str
+    metadata: Optional[dict] = None
+    document: Optional[str] = None
+
+class ChromaCollectionResponse(BaseModel):
+    """ChromaDB 컬렉션 조회 응답 모델"""
+    total_count: int
+    returned_count: int
+    offset: int
+    limit: int
+    documents: List[ChromaDocument]
+
+@router.get(
+    "/admin/chromadb/documents",
+    response_model=ChromaCollectionResponse,
+    tags=["Admin Tools"],
+    summary="ChromaDB 문서 조회 (가독성 향상)",
+    description="ChromaDB 컬렉션의 데이터를 사람이 읽기 쉬운 형태로 조회합니다."
+)
+def get_chromadb_documents(
+    limit: int = 25,
+    offset: int = 0,
+    include_documents: bool = True,
+    search_query: Optional[str] = None
+) -> ChromaCollectionResponse:
+    """
+    ChromaDB 문서를 통합된 객체 리스트로 반환합니다.
+    
+    Args:
+        limit: 한 번에 가져올 문서 개수 (기본 25, 최대 100)
+        offset: 건너뛸 문서 개수 (페이지네이션)
+        include_documents: 문서 내용 포함 여부 (기본 True)
+        search_query: (선택) 메타데이터 title 필터링 (부분 일치)
+    
+    Returns:
+        ChromaCollectionResponse: 통합된 문서 리스트
+    
+    Example:
+        GET /api/v1/reports/admin/chromadb/documents?limit=10&offset=0&search_query=춘천
+    """
+    try:
+        # Limit 제한 (과도한 요청 방지)
+        limit = min(limit, 100)
+        
+        # 전체 개수 확인
+        total_count = collection.count()
+        
+        if offset >= total_count:
+            return ChromaCollectionResponse(
+                total_count=total_count,
+                returned_count=0,
+                offset=offset,
+                limit=limit,
+                documents=[]
+            )
+        
+        # ChromaDB 조회
+        include_fields = ["metadatas"]
+        if include_documents:
+            include_fields.append("documents")
+        
+        try:
+            db_data = collection.get(
+                include=include_fields,
+                limit=limit,
+                offset=offset
+            )
+        except TypeError:
+            # Fallback for older ChromaDB versions
+            all_data = collection.get(include=include_fields)
+            db_data = {
+                "ids": all_data['ids'][offset:offset+limit],
+                "metadatas": all_data.get('metadatas', [])[offset:offset+limit],
+                "documents": all_data.get('documents', [])[offset:offset+limit] if include_documents else None
+            }
+        
+        # 데이터 통합 및 필터링
+        formatted_documents = []
+        ids = db_data.get('ids', [])
+        metadatas = db_data.get('metadatas', [])
+        documents = db_data.get('documents')
+        
+        for i, doc_id in enumerate(ids):
+            metadata = metadatas[i] if metadatas and i < len(metadatas) else {}
+            document = documents[i] if documents and i < len(documents) else None
+            
+            # 검색 쿼리 필터링 (title 기준)
+            if search_query:
+                title = metadata.get('title', '')
+                if search_query.lower() not in title.lower():
+                    continue
+            
+            formatted_documents.append(
+                ChromaDocument(
+                    id=doc_id,
+                    metadata=metadata,
+                    document=document
+                )
+            )
+        
+        return ChromaCollectionResponse(
+            total_count=total_count,
+            returned_count=len(formatted_documents),
+            offset=offset,
+            limit=limit,
+            documents=formatted_documents
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ChromaDB 데이터 조회 중 오류 발생: {str(e)}"
+        )
+
+
+@router.get(
+    "/admin/chromadb/search",
+    tags=["Admin Tools"],
+    summary="ChromaDB 유사도 검색",
+    description="텍스트 쿼리로 유사한 문서를 검색합니다."
+)
+def search_chromadb(
+    query: str,
+    n_results: int = 5
+) -> Dict[str, Any]:
+    """
+    벡터 유사도 검색으로 관련 문서를 찾습니다.
+    
+    Args:
+        query: 검색할 텍스트 (예: "춘천 데이터센터")
+        n_results: 반환할 결과 개수 (기본 5, 최대 20)
+    
+    Returns:
+        유사도 점수와 함께 정렬된 문서 리스트
+    """
+    try:
+        n_results = min(n_results, 20)
+        
+        # 쿼리 임베딩
+        query_vector = embedding_model.encode([query]).tolist()
+        
+        # 벡터 검색
+        results = collection.query(
+            query_embeddings=query_vector,
+            n_results=n_results,
+            include=["metadatas", "documents", "distances"]
+        )
+        
+        # 결과 통합
+        formatted_results = []
+        for i in range(len(results['ids'][0])):
+            formatted_results.append({
+                "id": results['ids'][0][i],
+                "metadata": results['metadatas'][0][i],
+                "document": results['documents'][0][i],
+                "similarity_score": 1 - results['distances'][0][i]  # Distance → Similarity
+            })
+        
+        return {
+            "query": query,
+            "total_results": len(formatted_results),
+            "results": formatted_results
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"검색 중 오류 발생: {str(e)}"
+        )
+
         
 @router.get("/admin/db_stats", tags=["Admin Tools"])
 def get_database_statistics():

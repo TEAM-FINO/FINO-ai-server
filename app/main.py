@@ -11,23 +11,19 @@ from app.services.health_service import check_all_services
 
 def setup_logging():
     """애플리케이션 로깅을 설정합니다."""
-    # 설정 딕셔너리 가져오기
     logging_config = get_logging_config(
         log_level=settings.LOG_LEVEL,
         env_mode=settings.ENV_MODE
     )
     
-    # dictConfig 적용
     logging.config.dictConfig(logging_config)
     
-    # 초기화 로그
     logger = logging.getLogger("app")
     logger.info(f"🔧 Logging configured: level={settings.LOG_LEVEL.upper()}, mode={settings.ENV_MODE}")
     
     if settings.ENV_MODE == 'production':
         logger.info("📊 JSON logging enabled for production")
 
-# 로깅 설정 실행
 setup_logging()
     
 @asynccontextmanager
@@ -79,9 +75,9 @@ def readiness_check():
     
     Kubernetes readiness probe 및 로드밸런서에서 사용됩니다.
     """
-    health_status = check_all_services()
+    health_status = check_all_services(include_optional=False)
     
-    if health_status.get("overall") != "healthy":
+    if health_status.get("overall_status") != "healthy":
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=health_status
@@ -89,10 +85,21 @@ def readiness_check():
     
     return health_status
 
-# 기본 라우터 포함
+
+@app.get("/health/detailed", tags=["System"])
+def detailed_health_check():
+    """
+    상세 Health Check: 선택적 서비스를 포함한 전체 상태를 조회합니다.
+    
+    관리자용 엔드포인트로, Redis 등 선택적 서비스도 포함합니다.
+    """
+    return check_all_services(include_optional=True)
+
+
+# 기본 라우터
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
 
-# 개발 모드일 때만 테스트용/관리자용 라우터 포함
+# 개발 모드일 때만 테스트용/관리자용 라우터
 if settings.ENV_MODE == "development":
     logger = logging.getLogger("app.main")
     logger.info("🔧 Running in development mode. Including mock data routes.")
