@@ -114,7 +114,7 @@ services:
     restart: unless-stopped
 
   vllm-server:
-    image: vllm/vllm-openai:latest
+    image: vllm/vllm-openai:v0.6.6
     deploy:
       resources:
         reservations:
@@ -133,7 +133,7 @@ services:
       --trust-remote-code
 
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.4.0
     container_name: chromadb
     ports:
       - "8000:8000"
@@ -145,7 +145,7 @@ services:
       start_period: 30s
 
   neo4j:
-    image: neo4j:5-enterprise
+    image: neo4j:5.26-enterprise
     ports:
       - "7687:7687"
       - "7474:7474"
@@ -166,7 +166,7 @@ services:
           memory: 2G
 
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:4.0-management
     container_name: rabbitmq
     ports: ["5672:5672", "15672:15672"] # 15672는 관리자 UI 포트
     volumes:
@@ -182,12 +182,12 @@ services:
       retries: 5
 
   redis:
-    image: redis:latest
+    image: redis:7.4-alpine
     container_name: redis
     ports: ["6379:6379"]
 
   flower:
-    image: mher/flower
+    image: mher/flower:2.0
     container_name: flower
     ports:
       - "5555:5555"
@@ -204,7 +204,7 @@ services:
         condition: service_started
 
   redisinsight:
-    image: redis/redisinsight:latest
+    image: redis/redisinsight:2.64
     container_name: redisinsight
     ports:
       - "5540:5540" 

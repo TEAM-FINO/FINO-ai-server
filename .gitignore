@@ -64,3 +64,4 @@ venv.bak
 
 # AI Models
 models/
+.claude/

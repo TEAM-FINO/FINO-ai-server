@@ -1,11 +1,11 @@
 # ====== Core Application ======
 # FastAPI 웹 프레임워크
-fastapi
-uvicorn[standard]
-pydantic-settings
+fastapi==0.127.0
+uvicorn[standard]==0.34.0
+pydantic-settings==2.7.1
 
 # 환경변수 관리
-python-dotenv
+python-dotenv==1.0.1
 
 # ====== Logging ======
 # 프로덕션 환경을 위한 구조화된 JSON 로깅 지원
@@ -13,29 +13,30 @@ python-json-logger==2.0.7
 
 # ====== Databases & Services ======
 # 데이터베이스 클라이언트
-chromadb-client
-neo4j
+chromadb-client==1.3.6
+neo4j==5.27.0
 
 # 비동기 작업 처리
-celery
-redis
-pika # Celery와 RabbitMQ 브로커 통신용
+celery==5.6.1
+redis==7.1.0
+pika==1.3.2 # Celery와 RabbitMQ 브로커 통신용
 
 # ====== AI & LangChain ======
 # AI/ML 라이브러리
-sentence-transformers
-langchain
-langchain-openai
-langchain-community
+sentence-transformers==5.2.0
+langchain==0.3.14
+langchain-openai==0.3.0
+langchain-community==0.3.14
+
 
 # 외부 API 연동
-google-api-python-client
+google-api-python-client==2.159.0
 
 # ====== Development & Testing ======
 # 개발 및 테스트용 유틸리티
-requests  # seed_data.py 스크립트 실행용
+requests==2.32.3  # seed_data.py 스크립트 실행용
 
 # 테스트 프레임워크
-numpy
-pytest
-pytest-mock
+numpy==2.2.1
+pytest==8.3.4
+pytest-mock==3.14.0
