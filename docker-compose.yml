@@ -36,8 +36,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      vllm-server:
-        condition: service_started
       chromadb:
         condition: service_healthy
       neo4j:
@@ -78,8 +76,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      vllm-server:
-        condition: service_started
       chromadb:
         condition: service_healthy
       neo4j:
@@ -114,6 +110,7 @@ services:
     restart: unless-stopped
 
   vllm-server:
+    profiles: ["gpu"]
     image: vllm/vllm-openai:v0.6.6
     deploy:
       resources:

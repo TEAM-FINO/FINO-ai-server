@@ -10,8 +10,11 @@ class Settings(BaseSettings):
     NEO4J_PASSWORD: Optional[str] = None 
     
     CHROMA_HOST: str
-    
-    VLLM_BASE_URL: str
+
+    VLLM_BASE_URL: Optional[str] = None  # vLLM 사용 시에만 필요
+
+    OPENAI_API_KEY: Optional[str] = None
+    LLM_MODEL_NAME: str = "gpt-4.1-mini"
     
     GOOGLE_API_KEY: Optional[str] = None
     GOOGLE_CSE_ID: str
